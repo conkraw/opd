@@ -6,3 +6,4 @@ XlsxWriter
 numpy
 datetime
 openpyxl
+matplotlib.pyplot
