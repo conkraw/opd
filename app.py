@@ -1,45 +1,3 @@
-import pandas as pd
-import streamlit as st
-from openpyxl import load_workbook
-from io import BytesIO
-import matplotlib.pyplot as plt
-
-# Function to process each area based on the date column and starting row
-def process_area(sheet, date_column, date_row, start_row, location):
-    date = sheet[f'{date_column}{date_row}'].value
-    am_names = [sheet[f'{date_column}{i}'].value for i in range(start_row, start_row + 10)]
-    pm_names = [sheet[f'{date_column}{i}'].value for i in range(start_row + 10, start_row + 20)]
-    names = [(name, 'AM') for name in am_names] + [(name, 'PM') for name in pm_names]
-
-    processed_data = []
-    for name, type_ in names:
-        if name:
-            preceptor, student = (name.split(' ~ ') if ' ~ ' in name else (name, None))
-            student_placed = 'Yes' if student else 'No'
-            student_type = None
-            if student:
-                if '(MD)' in student:
-                    student_type = 'MD'
-                elif '(PA)' in student:
-                    student_type = 'PA'
-
-            processed_data.append({
-                'Date': date,
-                'Type': type_,
-                'Description': name,
-                'Preceptor': preceptor.strip(),
-                'Student': student.strip() if student else None,
-                'Student Placed': student_placed,
-                'Student Type': student_type,
-                'Location': location
-            })
-    return processed_data
-
-# Streamlit app
-st.title('OPD Data Processor')
-
-uploaded_files = st.file_uploader("Choose Excel files", type="xlsx", accept_multiple_files=True)
-
 if uploaded_files:
     all_data = []
     for uploaded_file in uploaded_files:
@@ -73,7 +31,11 @@ if uploaded_files:
         .rename(columns={'Total Day Fraction': 'Total Days'})
     )
 
-    # Display the table of total days worked
+    # Display the combined dataset
+    st.write("Filtered Combined Dataset (Only 'Student Placed' = Yes):")
+    st.write(filtered_df)
+
+    # Display the summary table of total days worked
     st.write("Summary Table (Total Days Worked by Preceptor):")
     st.write(preceptor_days_summary)
 
@@ -86,16 +48,18 @@ if uploaded_files:
     plt.xticks(rotation=45)
     st.pyplot(fig)
 
-    # Allow download of the detailed days worked data
+    # Allow download of the combined dataset, daily breakdown, and summary
     output_file = BytesIO()
     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
+        filtered_df.to_excel(writer, index=False, sheet_name='Combined Dataset')
         days_worked.to_excel(writer, index=False, sheet_name='Days Worked Detail')
         preceptor_days_summary.to_excel(writer, index=False, sheet_name='Total Days Summary')
     output_file.seek(0)
 
     st.download_button(
-        label="Download Days Worked Data",
+        label="Download Combined and Summary Data",
         data=output_file,
-        file_name="days_worked_data.xlsx",
+        file_name="combined_and_summary_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
