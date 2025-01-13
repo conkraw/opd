@@ -54,37 +54,48 @@ if uploaded_files:
 
     df = pd.DataFrame(all_data)
 
-    # Display only rows where 'Student Placed' is 'Yes'
+    # Filter rows where 'Student Placed' is 'Yes'
     filtered_df = df[df['Student Placed'] == 'Yes']
-    st.write("Filtered Data (Only 'Student Placed' = Yes):")
-    st.write(filtered_df)
 
-    # Count how many times each preceptor worked with a student
-    preceptor_counts = filtered_df['Preceptor'].value_counts().reset_index()
-    preceptor_counts.columns = ['Preceptor', 'Count']
+    # Calculate Days Worked by Preceptor
+    filtered_df['Half Day'] = filtered_df['Type'].apply(lambda x: 0.5 if x in ['AM', 'PM'] else 0)
+    days_worked = (
+        filtered_df.groupby(['Preceptor', 'Date'])['Half Day']
+        .sum()
+        .reset_index()
+        .rename(columns={'Half Day': 'Total Day Fraction'})
+    )
 
-    st.write("Summary Table (Preceptor Student Interactions):")
-    st.write(preceptor_counts)
+    preceptor_days_summary = (
+        days_worked.groupby('Preceptor')['Total Day Fraction']
+        .sum()
+        .reset_index()
+        .rename(columns={'Total Day Fraction': 'Total Days'})
+    )
 
-    # Plot the graph
+    # Display the table of total days worked
+    st.write("Summary Table (Total Days Worked by Preceptor):")
+    st.write(preceptor_days_summary)
+
+    # Plot the graph for total days worked
     fig, ax = plt.subplots()
-    ax.bar(preceptor_counts['Preceptor'], preceptor_counts['Count'])
+    ax.bar(preceptor_days_summary['Preceptor'], preceptor_days_summary['Total Days'])
     ax.set_xlabel('Preceptor')
-    ax.set_ylabel('Count')
-    ax.set_title('Preceptor - Student Interaction Count')
+    ax.set_ylabel('Total Days Worked')
+    ax.set_title('Total Days Worked by Preceptor')
     plt.xticks(rotation=45)
     st.pyplot(fig)
 
-    # Allow downloading of the filtered data
+    # Allow download of the detailed days worked data
     output_file = BytesIO()
     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
-        filtered_df.to_excel(writer, index=False, sheet_name='Filtered Data')
+        days_worked.to_excel(writer, index=False, sheet_name='Days Worked Detail')
+        preceptor_days_summary.to_excel(writer, index=False, sheet_name='Total Days Summary')
     output_file.seek(0)
 
     st.download_button(
-        label="Download Filtered Data",
+        label="Download Days Worked Data",
         data=output_file,
-        file_name="filtered_data.xlsx",
+        file_name="days_worked_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
