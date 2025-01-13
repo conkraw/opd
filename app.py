@@ -1,3 +1,45 @@
+import pandas as pd
+import streamlit as st
+from openpyxl import load_workbook
+from io import BytesIO
+import matplotlib.pyplot as plt
+
+# Function to process each area based on the date column and starting row
+def process_area(sheet, date_column, date_row, start_row, location):
+    date = sheet[f'{date_column}{date_row}'].value
+    am_names = [sheet[f'{date_column}{i}'].value for i in range(start_row, start_row + 10)]
+    pm_names = [sheet[f'{date_column}{i}'].value for i in range(start_row + 10, start_row + 20)]
+    names = [(name, 'AM') for name in am_names] + [(name, 'PM') for name in pm_names]
+
+    processed_data = []
+    for name, type_ in names:
+        if name:
+            preceptor, student = (name.split(' ~ ') if ' ~ ' in name else (name, None))
+            student_placed = 'Yes' if student else 'No'
+            student_type = None
+            if student:
+                if '(MD)' in student:
+                    student_type = 'MD'
+                elif '(PA)' in student:
+                    student_type = 'PA'
+
+            processed_data.append({
+                'Date': date,
+                'Type': type_,
+                'Description': name,
+                'Preceptor': preceptor.strip(),
+                'Student': student.strip() if student else None,
+                'Student Placed': student_placed,
+                'Student Type': student_type,
+                'Location': location
+            })
+    return processed_data
+
+# Streamlit app
+st.title('OPD Data Processor')
+
+uploaded_files = st.file_uploader("Choose Excel files", type="xlsx", accept_multiple_files=True)
+
 if uploaded_files:
     all_data = []
     for uploaded_file in uploaded_files:
