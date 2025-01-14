@@ -3,6 +3,7 @@ import streamlit as st
 from openpyxl import load_workbook
 from io import BytesIO
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Function to process each area based on the date column and starting row
 def process_area(sheet, date_column, date_row, start_row, location):
@@ -61,16 +62,6 @@ if uploaded_files:
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
     df['Weekday'] = df['Date'].dt.day_name()
 
-    # Filter rows where 'Student Placed' is 'Yes'
-    filtered_df = df[df['Student Placed'] == 'Yes']
-
-    # Clean Preceptor names
-    df['Preceptor'] = df['Preceptor'].str.strip()
-    df['Preceptor'] = df['Preceptor'].str.replace(r' ~$', '', regex=True)
-
-    filtered_df['Preceptor'] = filtered_df['Preceptor'].str.strip()
-    filtered_df['Preceptor'] = filtered_df['Preceptor'].str.replace(r' ~$', '', regex=True)
-
     # Calculate available and used shifts
     total_shifts = df.groupby(['Location', 'Weekday', 'Type']).size().reset_index(name='Total Shifts')
     open_shifts = df[df['Student Placed'] == 'No'].groupby(['Location', 'Weekday', 'Type']).size().reset_index(name='Open Shifts')
@@ -93,13 +84,34 @@ if uploaded_files:
 
     total_shifts_summary_pivot = total_shifts_summary.pivot(index='Weekday', columns='Type', values='Percentage Open').fillna(0).reset_index()
 
-    # Display percentage open shifts by location
-    st.write("Percentage of Open Shifts by Weekday, Type (AM/PM), and Location:")
-    st.write(location_shifts_summary)
+    # Plot total percentage open shifts by AM/PM
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for shift_type in ['AM', 'PM']:
+        ax.plot(total_shifts_summary_pivot['Weekday'], total_shifts_summary_pivot[shift_type], marker='o', label=shift_type)
+    ax.set_title('Total Percentage of Open Shifts by Weekday (AM/PM)')
+    ax.set_ylabel('Percentage Open Shifts')
+    ax.set_xlabel('Weekday')
+    plt.xticks(rotation=45)
+    ax.legend()
+    st.pyplot(fig)
 
-    # Display total percentage open shifts across all locations
-    st.write("Total Percentage of Open Shifts by Weekday and Type (AM/PM):")
-    st.write(total_shifts_summary_pivot)
+    # Plot percentage open shifts by location and type
+    locations = location_shifts['Location'].unique()
+    fig, ax = plt.subplots(figsize=(12, 8))
+    x = np.arange(len(location_shifts_summary['Weekday'].unique()))
+    bar_width = 0.2
+    for i, location in enumerate(locations):
+        data = location_shifts_summary.pivot(index='Weekday', columns='Type', values=location).reset_index()
+        ax.bar(x + (i * bar_width), data['AM'], bar_width, label=f'{location} - AM')
+        ax.bar(x + (i * bar_width) + (bar_width / 2), data['PM'], bar_width, label=f'{location} - PM')
+    ax.set_title('Percentage of Open Shifts by Location and Type')
+    ax.set_ylabel('Percentage Open Shifts')
+    ax.set_xlabel('Weekday')
+    ax.set_xticks(x + (len(locations) - 1) * bar_width / 2)
+    ax.set_xticklabels(location_shifts_summary['Weekday'].unique())
+    plt.xticks(rotation=45)
+    ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
+    st.pyplot(fig)
 
     # Include all data in the downloadable Excel file
     output_file = BytesIO()
