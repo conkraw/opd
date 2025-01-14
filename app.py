@@ -57,125 +57,41 @@ if uploaded_files:
     # Exclude rows with "COM CLOSED" or "Closed" in the Description column
     df = df[~df['Description'].str.contains('COM CLOSED|Closed', case=False, na=False)]
 
-    # Filter rows where 'Student Placed' is 'Yes'
-    filtered_df = df[df['Student Placed'] == 'Yes']
+    # Add weekday column
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    df['Weekday'] = df['Date'].dt.day_name()
 
-    # Clean Preceptor names
-    df['Preceptor'] = df['Preceptor'].str.strip()
-    df['Preceptor'] = df['Preceptor'].str.replace(r' ~$', '', regex=True)
+    # Calculate open shifts (unassigned shifts)
+    open_shifts = df[df['Student Placed'] == 'No']
 
-    filtered_df['Preceptor'] = filtered_df['Preceptor'].str.strip()
-    filtered_df['Preceptor'] = filtered_df['Preceptor'].str.replace(r' ~$', '', regex=True)
-
-    # Calculate Days Worked by Preceptor
-    filtered_df['Half Day'] = filtered_df['Type'].apply(lambda x: 0.5 if x in ['AM', 'PM'] else 0)
-    days_worked = (
-        filtered_df.groupby(['Preceptor', 'Date'])['Half Day']
-        .sum()
-        .reset_index()
-        .rename(columns={'Half Day': 'Total Day Fraction'})
-    )
-
-    preceptor_days_summary = (
-        days_worked.groupby('Preceptor')['Total Day Fraction']
-        .sum()
-        .reset_index()
-        .rename(columns={'Total Day Fraction': 'Total Days'})
-    )
-
-    # Calculate available and used shifts
-    available_shifts = (
-        df.groupby(['Preceptor', 'Date', 'Type'])
+    # Calculate average open shifts by weekday and type (AM/PM)
+    avg_open_shifts = (
+        open_shifts.groupby(['Weekday', 'Type'])
         .size()
-        .reset_index(name='Available Shifts')
-    )
-    available_shifts = (
-        available_shifts.groupby('Preceptor')['Available Shifts']
-        .sum()
+        .reset_index(name='Open Shifts')
+        .groupby(['Weekday', 'Type'])['Open Shifts']
+        .mean()
+        .unstack()
+        .fillna(0)
         .reset_index()
     )
 
-    used_shifts = (
-        filtered_df.groupby(['Preceptor', 'Date', 'Type'])
-        .size()
-        .reset_index(name='Used Shifts')
-    )
-    used_shifts = (
-        used_shifts.groupby('Preceptor')['Used Shifts']
-        .sum()
-        .reset_index()
-    )
+    # Display the average open shifts table
+    st.write("Average Open Shifts by Weekday and Type:")
+    st.write(avg_open_shifts)
 
-    # Count MD and PA shifts
-    md_shifts = filtered_df[filtered_df['Student Type'] == 'MD'].groupby('Preceptor').size().reset_index(name='MD Shifts')
-    pa_shifts = filtered_df[filtered_df['Student Type'] == 'PA'].groupby('Preceptor').size().reset_index(name='PA Shifts')
-
-    # Merge all summary data
-    shifts_summary = pd.merge(available_shifts, used_shifts, on='Preceptor', how='left')
-    shifts_summary = pd.merge(shifts_summary, md_shifts, on='Preceptor', how='left')
-    shifts_summary = pd.merge(shifts_summary, pa_shifts, on='Preceptor', how='left')
-    shifts_summary['Used Shifts'] = shifts_summary['Used Shifts'].fillna(0)
-    shifts_summary['MD Shifts'] = shifts_summary['MD Shifts'].fillna(0)
-    shifts_summary['PA Shifts'] = shifts_summary['PA Shifts'].fillna(0)
-    shifts_summary['Unused Shifts'] = shifts_summary['Available Shifts'] - shifts_summary['Used Shifts']
-    shifts_summary['Percentage of Shifts Filled'] = (
-        (shifts_summary['Used Shifts'] / shifts_summary['Available Shifts']) * 100
-    )
-    shifts_summary['Percentage MD'] = (
-        (shifts_summary['MD Shifts'] / shifts_summary['Used Shifts']) * 100
-    ).fillna(0)
-    shifts_summary['Percentage PA'] = (
-        (shifts_summary['PA Shifts'] / shifts_summary['Used Shifts']) * 100
-    ).fillna(0)
-
-    # Display the combined dataset (all rows)
-    st.write("Combined Dataset (All Rows):")
-    st.write(df)
-
-    # Display the summary table of total days worked
-    st.write("Summary Table (Total Days Worked by Preceptor):")
-    st.write(preceptor_days_summary)
-
-    # Display the shifts summary table
-    st.write("Summary Table (Available vs. Used Shifts by Preceptor):")
-    st.write(shifts_summary)
-
-    # Plot the graph for percentage of shifts filled
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(shifts_summary['Preceptor'], shifts_summary['Percentage of Shifts Filled'])
-    ax.set_xlabel('Preceptor')
-    ax.set_ylabel('Percentage of Shifts Filled')
-    ax.set_title('Percentage of Shifts Where Preceptor is Assigned a Student')
-    plt.xticks(rotation=45, fontsize=10, ha='right')
-    st.pyplot(fig)
-
-    # Plot the graph for percentage of MD and PA shifts
-    fig, ax = plt.subplots(figsize=(12, 6))
-    bar_width = 0.35
-    x = range(len(shifts_summary['Preceptor']))
-    ax.bar(x, shifts_summary['Percentage MD'], width=bar_width, label='MD Shifts')
-    ax.bar([p + bar_width for p in x], shifts_summary['Percentage PA'], width=bar_width, label='PA Shifts')
-    ax.set_xticks([p + bar_width / 2 for p in x])
-    ax.set_xticklabels(shifts_summary['Preceptor'], rotation=45, ha='right', fontsize=10)
-    ax.set_xlabel('Preceptor')
-    ax.set_ylabel('Percentage of Used Shifts')
-    ax.set_title('Percentage of MD vs. PA Shifts by Preceptor')
-    ax.legend()
-    st.pyplot(fig)
-
-    # Include shifts summary in the download file
+    # Include results in the downloadable Excel file
     output_file = BytesIO()
     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Combined Dataset')  # Full dataset
-        days_worked.to_excel(writer, index=False, sheet_name='Days Worked Detail')
-        preceptor_days_summary.to_excel(writer, index=False, sheet_name='Total Days Summary')
-        shifts_summary.to_excel(writer, index=False, sheet_name='Shifts Summary')
+        avg_open_shifts.to_excel(writer, index=False, sheet_name='Avg Open Shifts')  # Avg open shifts
     output_file.seek(0)
 
     st.download_button(
-        label="Download Combined and Summary Data",
+        label="Download Combined Dataset and Open Shifts Data",
         data=output_file,
-        file_name="combined_and_summary_data.xlsx",
+        file_name="combined_and_open_shifts_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
