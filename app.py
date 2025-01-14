@@ -64,7 +64,6 @@ def correct_student_designations(df):
     df.drop(columns=['Student Designation'], inplace=True)
 
     return df
-
 # Streamlit app
 st.title('OPD Data Processor')
 
@@ -87,9 +86,6 @@ if uploaded_files:
     # Exclude rows with "COM CLOSED" or "Closed" in the Description column
     df = df[~df['Description'].str.contains('COM CLOSED|Closed', case=False, na=False)]
 
-    # Correct missing student designations
-    df = correct_student_designations(df)
-    
     # Add weekday column
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
     df['Weekday'] = df['Date'].dt.day_name()
