@@ -36,6 +36,35 @@ def process_area(sheet, date_column, date_row, start_row, location):
             })
     return processed_data
 
+def correct_student_designations(df):
+    """
+    Corrects student designations (e.g., missing (MD) or (PA)) in the dataset
+    by checking for matching names with proper designations elsewhere in the dataset.
+    """
+    # Extract students with and without designations
+    df['Student Designation'] = df['Student'].str.extract(r'\((MD|PA)\)')
+    students_with_designations = df.dropna(subset=['Student Designation'])
+    students_without_designations = df[df['Student Designation'].isna()]
+
+    # Map correct designations for students without them
+    for _, row in students_without_designations.iterrows():
+        student_name = row['Student'].strip() if row['Student'] else None
+
+        if student_name:
+            # Check if a matching name exists in rows with designations
+            matches = students_with_designations[
+                students_with_designations['Student'].str.contains(student_name, na=False, case=False, regex=False)
+            ]
+            if not matches.empty:
+                # If a match is found, append the first correct designation
+                correct_designation = matches['Student Designation'].iloc[0]
+                df.loc[row.name, 'Student'] = f"{student_name} ({correct_designation})"
+
+    # Drop the temporary column used for correction
+    df.drop(columns=['Student Designation'], inplace=True)
+
+    return df
+
 # Streamlit app
 st.title('OPD Data Processor')
 
