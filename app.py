@@ -54,14 +54,16 @@ if uploaded_files:
 
     df = pd.DataFrame(all_data)
 
-    # Clean Preceptor names: remove leading/trailing spaces and normalize values
-    df['Preceptor'] = df['Preceptor'].str.strip()  # Remove leading/trailing spaces
-    df['Preceptor'] = df['Preceptor'].str.replace(r' ~$', '', regex=True)  # Remove trailing ~
+    # Exclude rows with "COM CLOSED" or "Closed" in the Description column
+    df = df[~df['Description'].str.contains('COM CLOSED|Closed', case=False, na=False)]
 
     # Filter rows where 'Student Placed' is 'Yes'
     filtered_df = df[df['Student Placed'] == 'Yes']
 
-    # Clean Preceptor names in filtered_df as well
+    # Clean Preceptor names
+    df['Preceptor'] = df['Preceptor'].str.strip()
+    df['Preceptor'] = df['Preceptor'].str.replace(r' ~$', '', regex=True)
+
     filtered_df['Preceptor'] = filtered_df['Preceptor'].str.strip()
     filtered_df['Preceptor'] = filtered_df['Preceptor'].str.replace(r' ~$', '', regex=True)
 
