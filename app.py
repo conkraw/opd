@@ -64,6 +64,33 @@ def correct_student_designations(df):
     df.drop(columns=['Student Designation'], inplace=True)
 
     return df
+
+# Identify data entry errors for review
+def identify_data_entry_errors(df):
+    """
+    Identifies potential data entry errors where the same student appears with inconsistent designations.
+    """
+    # Extract the base student name (remove designations like (MD) or (PA))
+    df['Base Student Name'] = df['Student'].str.replace(r'\s*\(.*?\)', '', regex=True).str.strip()
+
+    # Check for inconsistencies
+    inconsistent_students = (
+        df.groupby('Base Student Name')['Student']
+        .nunique()
+        .reset_index()
+        .rename(columns={'Student': 'Designation Variants'})
+    )
+    inconsistent_students = inconsistent_students[inconsistent_students['Designation Variants'] > 1]
+
+    # Filter rows with potential errors for review
+    errors_for_review = df[df['Base Student Name'].isin(inconsistent_students['Base Student Name'])]
+
+    # Drop the temporary column
+    df.drop(columns=['Base Student Name'], inplace=True)
+
+    return errors_for_review
+
+
 # Streamlit app
 st.title('OPD Data Processor')
 
@@ -86,7 +113,18 @@ if uploaded_files:
     # Exclude rows with "COM CLOSED" or "Closed" in the Description column
     df = df[~df['Description'].str.contains('COM CLOSED|Closed|MHS ORIENTATION', case=False, na=False)]
 
+    # Correct missing student designations
     df = correct_student_designations(df)
+    
+    # Identify potential data entry errors
+    errors_for_review = identify_data_entry_errors(df)
+    
+    # Display the errors for review
+    if not errors_for_review.empty:
+        st.write("Potential Data Entry Errors for Review:")
+        st.write(errors_for_review)
+    else:
+        st.write("No data entry errors found!")
 
     # Add weekday column
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
