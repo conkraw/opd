@@ -101,7 +101,7 @@ if uploaded_files:
     df = df[~df['Description'].str.contains('COM CLOSED|Closed|MHS ORIENTATION', case=False, na=False)]
 
     # Correct missing student designations
-    df = correct_student_designations(df)
+    #df = correct_student_designations(df)
 
     # Flag rows with missing designations
     df = flag_missing_designations(df)
