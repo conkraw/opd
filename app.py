@@ -57,45 +57,56 @@ if uploaded_files:
     # Filter rows where 'Student Placed' is 'Yes'
     filtered_df = df[df['Student Placed'] == 'Yes']
 
-    # Calculate Days Worked by Preceptor
-    filtered_df['Half Day'] = filtered_df['Type'].apply(lambda x: 0.5 if x in ['AM', 'PM'] else 0)
-    days_worked = (
-        filtered_df.groupby(['Preceptor', 'Date'])['Half Day']
+    # Calculate available and used shifts
+    available_shifts = (
+        df.groupby(['Preceptor', 'Date', 'Type'])
+        .size()
+        .reset_index(name='Available Shifts')
+    )
+    available_shifts = (
+        available_shifts.groupby('Preceptor')['Available Shifts']
         .sum()
         .reset_index()
-        .rename(columns={'Half Day': 'Total Day Fraction'})
     )
 
-    preceptor_days_summary = (
-        days_worked.groupby('Preceptor')['Total Day Fraction']
+    used_shifts = (
+        filtered_df.groupby(['Preceptor', 'Date', 'Type'])
+        .size()
+        .reset_index(name='Used Shifts')
+    )
+    used_shifts = (
+        used_shifts.groupby('Preceptor')['Used Shifts']
         .sum()
         .reset_index()
-        .rename(columns={'Total Day Fraction': 'Total Days'})
     )
 
-    # Display the combined dataset
-    st.write("Filtered Combined Dataset (Only 'Student Placed' = Yes):")
-    st.write(filtered_df)
+    # Merge the available and used shifts into one summary table
+    shifts_summary = pd.merge(available_shifts, used_shifts, on='Preceptor', how='left')
+    shifts_summary['Used Shifts'] = shifts_summary['Used Shifts'].fillna(0)
+    shifts_summary['Unused Shifts'] = shifts_summary['Available Shifts'] - shifts_summary['Used Shifts']
 
-    # Display the summary table of total days worked
-    st.write("Summary Table (Total Days Worked by Preceptor):")
-    st.write(preceptor_days_summary)
+    # Display the shifts summary table
+    st.write("Summary Table (Available vs. Used Shifts by Preceptor):")
+    st.write(shifts_summary)
 
-    # Plot the graph for total days worked
+    # Plot the graph for available and used shifts
     fig, ax = plt.subplots()
-    ax.bar(preceptor_days_summary['Preceptor'], preceptor_days_summary['Total Days'])
+    ax.bar(shifts_summary['Preceptor'], shifts_summary['Available Shifts'], label='Available Shifts', alpha=0.7)
+    ax.bar(shifts_summary['Preceptor'], shifts_summary['Used Shifts'], label='Used Shifts', alpha=0.7)
     ax.set_xlabel('Preceptor')
-    ax.set_ylabel('Total Days Worked')
-    ax.set_title('Total Days Worked by Preceptor')
+    ax.set_ylabel('Shifts')
+    ax.set_title('Available vs. Used Shifts by Preceptor')
+    ax.legend()
     plt.xticks(rotation=45)
     st.pyplot(fig)
 
-    # Allow download of the combined dataset, daily breakdown, and summary
+    # Include shifts summary in the download file
     output_file = BytesIO()
     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
         filtered_df.to_excel(writer, index=False, sheet_name='Combined Dataset')
         days_worked.to_excel(writer, index=False, sheet_name='Days Worked Detail')
         preceptor_days_summary.to_excel(writer, index=False, sheet_name='Total Days Summary')
+        shifts_summary.to_excel(writer, index=False, sheet_name='Shifts Summary')
     output_file.seek(0)
 
     st.download_button(
@@ -104,4 +115,5 @@ if uploaded_files:
         file_name="combined_and_summary_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
