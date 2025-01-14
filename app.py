@@ -77,6 +77,45 @@ def flag_missing_designations(df):
     )
     return df
 
+def correct_and_flag_missing_designations(df):
+    """
+    Corrects missing (MD) or (PA) designations in the dataset and flags rows where corrections were made.
+    """
+    # Extract the designation (MD or PA) if present
+    df['Student Designation'] = df['Student'].str.extract(r'\((MD|PA)\)')
+    
+    # Extract the base student name (without the designation)
+    df['Base Student Name'] = df['Student'].str.replace(r'\s*\(.*?\)', '', regex=True).str.strip()
+
+    # Get students with valid designations
+    students_with_designations = df.dropna(subset=['Student Designation'])
+
+    # Add a column for correction notes
+    df['Correction Note'] = None
+
+    # Correct rows where the designation is missing
+    for idx, row in df.iterrows():
+        if row['Student Placed'] == 'Yes' and pd.isna(row['Student Designation']) and row['Base Student Name']:
+            # Find matching students with valid designations
+            matches = students_with_designations[
+                students_with_designations['Base Student Name'] == row['Base Student Name']
+            ]
+            if not matches.empty:
+                # Take the first matching designation
+                correct_designation = matches['Student Designation'].iloc[0]
+                corrected_student = f"{row['Base Student Name']} ({correct_designation})"
+                
+                # Update the Student column with the corrected designation
+                df.at[idx, 'Student'] = corrected_student
+                
+                # Add a note indicating the correction
+                df.at[idx, 'Correction Note'] = f"Corrected to '{corrected_student}'"
+
+    # Drop temporary columns used for corrections
+    df.drop(columns=['Student Designation', 'Base Student Name'], inplace=True)
+
+    return df
+
 
 # Streamlit app
 st.title('OPD Data Processor')
@@ -105,6 +144,8 @@ if uploaded_files:
 
     # Flag rows with missing designations
     df = flag_missing_designations(df)
+
+    df = correct_and_flag_missing_designations(df)
     
     # Display flagged rows for review
     missing_designations = df[df['Missing Designation']]
