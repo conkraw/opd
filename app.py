@@ -55,7 +55,7 @@ if uploaded_files:
     df = pd.DataFrame(all_data)
 
     # Exclude rows with "COM CLOSED" or "Closed" in the Description column
-    df = df[~df['Description'].str.contains('COM CLOSED|Closed|MHS ORIENTATION', case=False, na=False)]
+    df = df[~df['Description'].str.contains('COM CLOSED|Closed', case=False, na=False)]
 
     # Filter rows where 'Student Placed' is 'Yes'
     filtered_df = df[df['Student Placed'] == 'Yes']
@@ -106,13 +106,27 @@ if uploaded_files:
         .reset_index()
     )
 
-    # Merge the available and used shifts into one summary table
+    # Count MD and PA shifts
+    md_shifts = filtered_df[filtered_df['Student Type'] == 'MD'].groupby('Preceptor').size().reset_index(name='MD Shifts')
+    pa_shifts = filtered_df[filtered_df['Student Type'] == 'PA'].groupby('Preceptor').size().reset_index(name='PA Shifts')
+
+    # Merge all summary data
     shifts_summary = pd.merge(available_shifts, used_shifts, on='Preceptor', how='left')
+    shifts_summary = pd.merge(shifts_summary, md_shifts, on='Preceptor', how='left')
+    shifts_summary = pd.merge(shifts_summary, pa_shifts, on='Preceptor', how='left')
     shifts_summary['Used Shifts'] = shifts_summary['Used Shifts'].fillna(0)
+    shifts_summary['MD Shifts'] = shifts_summary['MD Shifts'].fillna(0)
+    shifts_summary['PA Shifts'] = shifts_summary['PA Shifts'].fillna(0)
     shifts_summary['Unused Shifts'] = shifts_summary['Available Shifts'] - shifts_summary['Used Shifts']
     shifts_summary['Percentage of Shifts Filled'] = (
         (shifts_summary['Used Shifts'] / shifts_summary['Available Shifts']) * 100
     )
+    shifts_summary['Percentage MD'] = (
+        (shifts_summary['MD Shifts'] / shifts_summary['Used Shifts']) * 100
+    ).fillna(0)
+    shifts_summary['Percentage PA'] = (
+        (shifts_summary['PA Shifts'] / shifts_summary['Used Shifts']) * 100
+    ).fillna(0)
 
     # Display the combined dataset (all rows)
     st.write("Combined Dataset (All Rows):")
@@ -126,26 +140,6 @@ if uploaded_files:
     st.write("Summary Table (Available vs. Used Shifts by Preceptor):")
     st.write(shifts_summary)
 
-    # Plot the graph for total days worked
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(preceptor_days_summary['Preceptor'], preceptor_days_summary['Total Days'])
-    ax.set_xlabel('Preceptor')
-    ax.set_ylabel('Total Days Worked')
-    ax.set_title('Total Days Worked by Preceptor')
-    plt.xticks(rotation=45, fontsize=10, ha='right')
-    st.pyplot(fig)
-
-    # Plot the graph for available vs. used shifts
-    fig, ax = plt.subplots(figsize=(12, 6))
-    ax.bar(shifts_summary['Preceptor'], shifts_summary['Available Shifts'], label='Available Shifts', alpha=0.7)
-    ax.bar(shifts_summary['Preceptor'], shifts_summary['Used Shifts'], label='Used Shifts', alpha=0.7)
-    ax.set_xlabel('Preceptor')
-    ax.set_ylabel('Shifts')
-    ax.set_title('Available vs. Used Shifts by Preceptor')
-    ax.legend()
-    plt.xticks(rotation=45, fontsize=10, ha='right')
-    st.pyplot(fig)
-
     # Plot the graph for percentage of shifts filled
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(shifts_summary['Preceptor'], shifts_summary['Percentage of Shifts Filled'])
@@ -153,6 +147,20 @@ if uploaded_files:
     ax.set_ylabel('Percentage of Shifts Filled')
     ax.set_title('Percentage of Shifts Where Preceptor is Assigned a Student')
     plt.xticks(rotation=45, fontsize=10, ha='right')
+    st.pyplot(fig)
+
+    # Plot the graph for percentage of MD and PA shifts
+    fig, ax = plt.subplots(figsize=(12, 6))
+    bar_width = 0.35
+    x = range(len(shifts_summary['Preceptor']))
+    ax.bar(x, shifts_summary['Percentage MD'], width=bar_width, label='MD Shifts')
+    ax.bar([p + bar_width for p in x], shifts_summary['Percentage PA'], width=bar_width, label='PA Shifts')
+    ax.set_xticks([p + bar_width / 2 for p in x])
+    ax.set_xticklabels(shifts_summary['Preceptor'], rotation=45, ha='right', fontsize=10)
+    ax.set_xlabel('Preceptor')
+    ax.set_ylabel('Percentage of Used Shifts')
+    ax.set_title('Percentage of MD vs. PA Shifts by Preceptor')
+    ax.legend()
     st.pyplot(fig)
 
     # Include shifts summary in the download file
@@ -170,3 +178,4 @@ if uploaded_files:
         file_name="combined_and_summary_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
