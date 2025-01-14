@@ -62,87 +62,82 @@ if uploaded_files:
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
     df['Weekday'] = df['Date'].dt.day_name()
 
-    # Sort weekdays (Monday to Sunday)
-    weekday_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    df['Weekday'] = pd.Categorical(df['Weekday'], categories=weekday_order, ordered=True)
+    # Calculate Days Worked by Preceptor
+    filtered_df = df[df['Student Placed'] == 'Yes']
+    filtered_df['Half Day'] = filtered_df['Type'].apply(lambda x: 0.5 if x in ['AM', 'PM'] else 0)
+    days_worked = (
+        filtered_df.groupby(['Preceptor', 'Date'])['Half Day']
+        .sum()
+        .reset_index()
+        .rename(columns={'Half Day': 'Total Day Fraction'})
+    )
+
+    preceptor_days_summary = (
+        days_worked.groupby('Preceptor')['Total Day Fraction']
+        .sum()
+        .reset_index()
+        .rename(columns={'Total Day Fraction': 'Total Days'})
+    )
 
     # Calculate available and used shifts
-    total_shifts = df.groupby(['Location', 'Weekday', 'Type']).size().reset_index(name='Total Shifts')
-    open_shifts = df[df['Student Placed'] == 'No'].groupby(['Location', 'Weekday', 'Type']).size().reset_index(name='Open Shifts')
+    available_shifts = (
+        df.groupby(['Preceptor', 'Date', 'Type'])
+        .size()
+        .reset_index(name='Available Shifts')
+    )
+    available_shifts = (
+        available_shifts.groupby('Preceptor')['Available Shifts']
+        .sum()
+        .reset_index()
+    )
 
-    # Merge total shifts and open shifts
-    location_shifts = pd.merge(total_shifts, open_shifts, on=['Location', 'Weekday', 'Type'], how='left')
-    location_shifts['Open Shifts'] = location_shifts['Open Shifts'].fillna(0)
+    used_shifts = (
+        filtered_df.groupby(['Preceptor', 'Date', 'Type'])
+        .size()
+        .reset_index(name='Used Shifts')
+    )
+    used_shifts = (
+        used_shifts.groupby('Preceptor')['Used Shifts']
+        .sum()
+        .reset_index()
+    )
 
-    # Calculate percentage open shifts by location
-    location_shifts['Percentage Open'] = (location_shifts['Open Shifts'] / location_shifts['Total Shifts']) * 100
+    # Merge shifts data for preceptor summary
+    shifts_summary = pd.merge(available_shifts, used_shifts, on='Preceptor', how='left')
+    shifts_summary['Used Shifts'] = shifts_summary['Used Shifts'].fillna(0)
 
-    # Total percentage (all locations combined)
-    total_shifts_summary = location_shifts.groupby(['Weekday', 'Type'])[['Total Shifts', 'Open Shifts']].sum().reset_index()
-    total_shifts_summary['Percentage Open'] = (total_shifts_summary['Open Shifts'] / total_shifts_summary['Total Shifts']) * 100
-
-    # Individual Preceptor Percentage
-    preceptor_summary = df[df['Student Placed'] == 'Yes'].groupby(['Preceptor', 'Type'])['Student Placed'].count()
-    preceptor_summary = preceptor_summary.div(
-        df.groupby(['Preceptor', 'Type'])['Student Placed'].size()
-    ).reset_index(name='Percentage Filled') * 100
-
-    # Reshape data for display
-    total_shifts_summary_pivot = total_shifts_summary.pivot(index='Weekday', columns='Type', values='Percentage Open').fillna(0).reset_index()
-
-    # Plot total percentage open shifts by AM/PM
+    # Plot the graph for total days worked
     fig, ax = plt.subplots(figsize=(10, 6))
-    for shift_type in ['AM', 'PM']:
-        ax.plot(total_shifts_summary_pivot['Weekday'], total_shifts_summary_pivot[shift_type], marker='o', label=shift_type)
-    ax.set_title('Total Percentage of Open Shifts by Weekday (AM/PM)')
-    ax.set_ylabel('Percentage Open Shifts')
-    ax.set_xlabel('Weekday')
-    plt.xticks(rotation=45)
+    ax.bar(preceptor_days_summary['Preceptor'], preceptor_days_summary['Total Days'])
+    ax.set_xlabel('Preceptor')
+    ax.set_ylabel('Total Days Worked')
+    ax.set_title('Total Days Worked by Preceptor')
+    plt.xticks(rotation=45, fontsize=10, ha='right')
+    st.pyplot(fig)
+
+    # Plot the graph for available vs. used shifts
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.bar(shifts_summary['Preceptor'], shifts_summary['Available Shifts'], label='Available Shifts', alpha=0.7)
+    ax.bar(shifts_summary['Preceptor'], shifts_summary['Used Shifts'], label='Used Shifts', alpha=0.7)
+    ax.set_xlabel('Preceptor')
+    ax.set_ylabel('Shifts')
+    ax.set_title('Available vs. Used Shifts by Preceptor')
     ax.legend()
+    plt.xticks(rotation=45, fontsize=10, ha='right')
     st.pyplot(fig)
-
-    # Plot percentage open shifts by location and type
-    locations = location_shifts['Location'].unique()
-    fig, ax = plt.subplots(figsize=(12, 8))
-    x = np.arange(len(weekday_order))
-    bar_width = 0.2
-    for i, location in enumerate(locations):
-        data = location_shifts[location_shifts['Location'] == location]
-        data = data.groupby(['Weekday', 'Type'])['Percentage Open'].mean().unstack()
-        ax.bar(x + (i * bar_width), data['AM'], bar_width, label=f'{location} - AM')
-        ax.bar(x + (i * bar_width) + (bar_width / 2), data['PM'], bar_width, label=f'{location} - PM')
-    ax.set_title('Percentage of Open Shifts by Location and Type')
-    ax.set_ylabel('Percentage Open Shifts')
-    ax.set_xlabel('Weekday')
-    ax.set_xticks(x + (len(locations) - 1) * bar_width / 2)
-    ax.set_xticklabels(weekday_order)
-    plt.xticks(rotation=45)
-    ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
-    st.pyplot(fig)
-
-    # Individual Preceptor Graphs
-    for preceptor in preceptor_summary['Preceptor'].unique():
-        preceptor_data = preceptor_summary[preceptor_summary['Preceptor'] == preceptor]
-        fig, ax = plt.subplots(figsize=(8, 5))
-        ax.bar(preceptor_data['Type'], preceptor_data['Percentage Filled'], color=['skyblue', 'orange'])
-        ax.set_title(f'{preceptor} - Percentage of Shifts with Students')
-        ax.set_ylabel('Percentage of Shifts')
-        ax.set_xlabel('Shift Type')
-        st.pyplot(fig)
 
     # Include all data in the downloadable Excel file
     output_file = BytesIO()
     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Combined Dataset')  # Full dataset
-        location_shifts.to_excel(writer, index=False, sheet_name='Location Open Shifts')  # Open shifts by location
-        total_shifts_summary.to_excel(writer, index=False, sheet_name='Total Open Shifts')  # Total open shifts
-        preceptor_summary.to_excel(writer, index=False, sheet_name='Preceptor Filled Shifts')  # Preceptor shifts
+        preceptor_days_summary.to_excel(writer, index=False, sheet_name='Total Days Worked')  # Total days worked
+        shifts_summary.to_excel(writer, index=False, sheet_name='Shifts Summary')  # Available vs. used shifts
     output_file.seek(0)
 
     st.download_button(
         label="Download Combined and Summary Data",
         data=output_file,
-        file_name="combined_and_open_shifts_with_preceptors.xlsx",
+        file_name="combined_and_preceptor_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
