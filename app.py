@@ -101,9 +101,9 @@ if uploaded_files:
     shifts_summary['Used Shifts'] = shifts_summary['Used Shifts'].fillna(0)
     shifts_summary['Unused Shifts'] = shifts_summary['Available Shifts'] - shifts_summary['Used Shifts']
 
-    # Display the combined dataset
-    st.write("Filtered Combined Dataset (Only 'Student Placed' = Yes):")
-    st.write(filtered_df)
+    # Display the combined dataset (all rows)
+    st.write("Combined Dataset (All Rows):")
+    st.write(df)
 
     # Display the summary table of total days worked
     st.write("Summary Table (Total Days Worked by Preceptor):")
@@ -136,7 +136,7 @@ if uploaded_files:
     # Include shifts summary in the download file
     output_file = BytesIO()
     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
-        filtered_df.to_excel(writer, index=False, sheet_name='Combined Dataset')
+        df.to_excel(writer, index=False, sheet_name='Combined Dataset')  # Full dataset
         days_worked.to_excel(writer, index=False, sheet_name='Days Worked Detail')
         preceptor_days_summary.to_excel(writer, index=False, sheet_name='Total Days Summary')
         shifts_summary.to_excel(writer, index=False, sheet_name='Shifts Summary')
@@ -148,6 +148,4 @@ if uploaded_files:
         file_name="combined_and_summary_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-
 
