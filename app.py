@@ -36,88 +36,29 @@ def process_area(sheet, date_column, date_row, start_row, location):
             })
     return processed_data
 
-def correct_student_designations(df):
-    """
-    Corrects student designations (e.g., missing (MD) or (PA)) in the dataset
-    by checking for matching names with proper designations elsewhere in the dataset.
-    """
-    # Extract students with and without designations
-    df['Student Designation'] = df['Student'].str.extract(r'\((MD|PA)\)')
-    students_with_designations = df.dropna(subset=['Student Designation'])
-    students_without_designations = df[df['Student Designation'].isna()]
-
-    # Map correct designations for students without them
-    for _, row in students_without_designations.iterrows():
-        student_name = row['Student'].strip() if row['Student'] else None
-
-        if student_name:
-            # Check if a matching name exists in rows with designations
-            matches = students_with_designations[
-                students_with_designations['Student'].str.contains(student_name, na=False, case=False, regex=False)
-            ]
-            if not matches.empty:
-                # If a match is found, append the first correct designation
-                correct_designation = matches['Student Designation'].iloc[0]
-                df.loc[row.name, 'Student'] = f"{student_name} ({correct_designation})"
-
-    # Drop the temporary column used for correction
-    df.drop(columns=['Student Designation'], inplace=True)
-
-    return df
-
-# Identify data entry errors for review
-def flag_missing_designations(df):
-    """
-    Flags rows where a preceptor was assigned a student but the student is missing (MD) or (PA) designation.
-    """
-    # Create a flag column
-    df['Missing Designation'] = df.apply(
-        lambda row: row['Student Placed'] == 'Yes' and not pd.notnull(row['Student']) or
-        (row['Student Placed'] == 'Yes' and not bool(pd.Series(row['Student']).str.contains(r'\((MD|PA)\)').any())), axis=1
-    )
-    return df
-
 def correct_and_flag_missing_designations(df):
     """
     Corrects missing (MD) or (PA) designations in the dataset and flags rows where corrections were made.
     """
-    # Extract the designation (MD or PA) if present
     df['Student Designation'] = df['Student'].str.extract(r'\((MD|PA)\)')
-    
-    # Extract the base student name (without the designation)
     df['Base Student Name'] = df['Student'].str.replace(r'\s*\(.*?\)', '', regex=True).str.strip()
-
-    # Get students with valid designations
     students_with_designations = df.dropna(subset=['Student Designation'])
-
-    # Add a column for correction notes
     df['Correction Note'] = None
 
-    # Correct rows where the designation is missing
     for idx, row in df.iterrows():
         if row['Student Placed'] == 'Yes' and pd.isna(row['Student Designation']) and row['Base Student Name']:
-            # Find matching students with valid designations
             matches = students_with_designations[
                 students_with_designations['Base Student Name'] == row['Base Student Name']
             ]
             if not matches.empty:
-                # Take the first matching designation
                 correct_designation = matches['Student Designation'].iloc[0]
                 corrected_student = f"{row['Base Student Name']} ({correct_designation})"
-                
-                # Update the Student column with the corrected designation
                 df.at[idx, 'Student'] = corrected_student
-                
-                # Add a note indicating the correction
                 df.at[idx, 'Correction Note'] = f"Corrected to '{corrected_student}'"
 
-    # Drop temporary columns used for corrections
     df.drop(columns=['Student Designation', 'Base Student Name'], inplace=True)
-
     return df
 
-
-# Streamlit app
 st.title('OPD Data Processor')
 
 uploaded_files = st.file_uploader("Choose Excel files", type="xlsx", accept_multiple_files=True)
@@ -137,23 +78,10 @@ if uploaded_files:
     df = pd.DataFrame(all_data)
 
     # Exclude rows with "COM CLOSED" or "Closed" in the Description column
-    df = df[~df['Description'].str.contains('COM CLOSED|Closed|MHS ORIENTATION', case=False, na=False)]
+    df = df[~df['Description'].str.contains('COM CLOSED|Closed', case=False, na=False)]
 
-    # Correct missing student designations
-    #df = correct_student_designations(df)
-
-    # Flag rows with missing designations
-    df = flag_missing_designations(df)
-
+    # Correct missing student designations and flag corrections
     df = correct_and_flag_missing_designations(df)
-    
-    # Display flagged rows for review
-    missing_designations = df[df['Missing Designation']]
-    if not missing_designations.empty:
-        st.write("Rows with Missing Designations for Students:")
-        st.write(missing_designations)
-    else:
-        st.write("No missing designations found!")
 
     # Add weekday column
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
@@ -203,47 +131,29 @@ if uploaded_files:
     shifts_summary = pd.merge(available_shifts, used_shifts, on='Preceptor', how='left')
     shifts_summary['Used Shifts'] = shifts_summary['Used Shifts'].fillna(0)
 
-    # Plot the graph for total days worked
+    # Calculate percentage of used shifts per provider
+    shifts_summary['Percentage Used Shifts'] = (
+        (shifts_summary['Used Shifts'] / shifts_summary['Available Shifts']) * 100
+    ).fillna(0)
+
+    # Calculate number of MD shifts and percentage of MD students
+    md_shifts = filtered_df[filtered_df['Student Type'] == 'MD'].groupby('Preceptor').size().reset_index(name='MD Shifts')
+    shifts_summary = pd.merge(shifts_summary, md_shifts, on='Preceptor', how='left')
+    shifts_summary['MD Shifts'] = shifts_summary['MD Shifts'].fillna(0)
+    shifts_summary['Percentage MD Students'] = (
+        (shifts_summary['MD Shifts'] / shifts_summary['Used Shifts']) * 100
+    ).fillna(0)
+
+    # Plot total days worked
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(preceptor_days_summary['Preceptor'], preceptor_days_summary['Total Days'])
     ax.set_xlabel('Preceptor')
     ax.set_ylabel('Total Days Worked')
     ax.set_title('Total Days Worked by Preceptor')
-    plt.xticks(rotation=45, fontsize=10, ha='right')
+    plt.xticks(rotation=45, ha='right', fontsize=10)
     st.pyplot(fig)
 
-    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-    df['Weekday'] = df['Date'].dt.day_name()
-
-    # Sort weekdays (Monday to Sunday)
-    weekday_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    df['Weekday'] = pd.Categorical(df['Weekday'], categories=weekday_order, ordered=True)
-
-    # Calculate available and used shifts
-    total_shifts = df.groupby(['Location', 'Weekday', 'Type']).size().reset_index(name='Total Shifts')
-    open_shifts = df[df['Student Placed'] == 'No'].groupby(['Location', 'Weekday', 'Type']).size().reset_index(name='Open Shifts')
-
-    # Merge total shifts and open shifts
-    location_shifts = pd.merge(total_shifts, open_shifts, on=['Location', 'Weekday', 'Type'], how='left')
-    location_shifts['Open Shifts'] = location_shifts['Open Shifts'].fillna(0)
-
-    # Calculate percentage open shifts by location
-    location_shifts['Percentage Open'] = (location_shifts['Open Shifts'] / location_shifts['Total Shifts']) * 100
-
-    # Total percentage (all locations combined)
-    total_shifts_summary = location_shifts.groupby(['Weekday', 'Type'])[['Total Shifts', 'Open Shifts']].sum().reset_index()
-    total_shifts_summary['Percentage Open'] = (total_shifts_summary['Open Shifts'] / total_shifts_summary['Total Shifts']) * 100
-
-    # Individual Preceptor Percentage
-    preceptor_summary = df[df['Student Placed'] == 'Yes'].groupby(['Preceptor', 'Type'])['Student Placed'].count()
-    preceptor_summary = preceptor_summary.div(
-        df.groupby(['Preceptor', 'Type'])['Student Placed'].size()
-    ).reset_index(name='Percentage Filled') * 100
-
-    # Reshape data for display
-    total_shifts_summary_pivot = total_shifts_summary.pivot(index='Weekday', columns='Type', values='Percentage Open').fillna(0).reset_index()
-
-    # Plot the graph for available vs. used shifts
+    # Plot available vs. used shifts
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.bar(shifts_summary['Preceptor'], shifts_summary['Available Shifts'], label='Available Shifts', alpha=0.7)
     ax.bar(shifts_summary['Preceptor'], shifts_summary['Used Shifts'], label='Used Shifts', alpha=0.7)
@@ -251,37 +161,70 @@ if uploaded_files:
     ax.set_ylabel('Shifts')
     ax.set_title('Available vs. Used Shifts by Preceptor')
     ax.legend()
-    plt.xticks(rotation=45, fontsize=10, ha='right')
+    plt.xticks(rotation=45, ha='right', fontsize=10)
     st.pyplot(fig)
 
-        # Plot total percentage open shifts by AM/PM
+    # Calculate total open shifts by weekday and type
+    df['Weekday'] = pd.Categorical(df['Weekday'], categories=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], ordered=True)
+    total_shifts = df.groupby(['Weekday', 'Type']).size().reset_index(name='Total Shifts')
+    open_shifts = df[df['Student Placed'] == 'No'].groupby(['Weekday', 'Type']).size().reset_index(name='Open Shifts')
+    weekday_shifts = pd.merge(total_shifts, open_shifts, on=['Weekday', 'Type'], how='left')
+    weekday_shifts['Open Shifts'] = weekday_shifts['Open Shifts'].fillna(0)
+    weekday_shifts['Percentage Open'] = (weekday_shifts['Open Shifts'] / weekday_shifts['Total Shifts']) * 100
+
+    # Plot total percentage open shifts by AM/PM
     fig, ax = plt.subplots(figsize=(10, 6))
     for shift_type in ['AM', 'PM']:
-        ax.plot(total_shifts_summary_pivot['Weekday'], total_shifts_summary_pivot[shift_type], marker='o', label=shift_type)
+        data = weekday_shifts[weekday_shifts['Type'] == shift_type]
+        ax.plot(data['Weekday'], data['Percentage Open'], marker='o', label=shift_type)
     ax.set_title('Total Percentage of Open Shifts by Weekday (AM/PM)')
     ax.set_ylabel('Percentage Open Shifts')
     ax.set_xlabel('Weekday')
-    plt.xticks(rotation=45)
     ax.legend()
+    plt.xticks(rotation=45)
     st.pyplot(fig)
 
     # Plot percentage open shifts by location and type
+    location_shifts = df.groupby(['Location', 'Weekday', 'Type']).size().reset_index(name='Total Shifts')
+    location_open_shifts = df[df['Student Placed'] == 'No'].groupby(['Location', 'Weekday', 'Type']).size().reset_index(name='Open Shifts')
+    location_shifts = pd.merge(location_shifts, location_open_shifts, on=['Location', 'Weekday', 'Type'], how='left')
+    location_shifts['Open Shifts'] = location_shifts['Open Shifts'].fillna(0)
+    location_shifts['Percentage Open'] = (location_shifts['Open Shifts'] / location_shifts['Total Shifts']) * 100
+
     locations = location_shifts['Location'].unique()
     fig, ax = plt.subplots(figsize=(12, 8))
-    x = np.arange(len(weekday_order))
+    x = np.arange(len(weekday_shifts['Weekday'].unique()))
     bar_width = 0.2
     for i, location in enumerate(locations):
-        data = location_shifts[location_shifts['Location'] == location]
-        data = data.groupby(['Weekday', 'Type'])['Percentage Open'].mean().unstack()
-        ax.bar(x + (i * bar_width), data['AM'], bar_width, label=f'{location} - AM')
-        ax.bar(x + (i * bar_width) + (bar_width / 2), data['PM'], bar_width, label=f'{location} - PM')
+        loc_data = location_shifts[location_shifts['Location'] == location]
+        loc_data = loc_data.groupby(['Weekday', 'Type'])['Percentage Open'].mean().unstack()
+        ax.bar(x + (i * bar_width), loc_data['AM'], bar_width, label=f'{location} - AM')
+        ax.bar(x + (i * bar_width) + bar_width, loc_data['PM'], bar_width, label=f'{location} - PM')
+    ax.set_xticks(x + (len(locations) - 1) * bar_width / 2)
+    ax.set_xticklabels(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])
     ax.set_title('Percentage of Open Shifts by Location and Type')
     ax.set_ylabel('Percentage Open Shifts')
     ax.set_xlabel('Weekday')
-    ax.set_xticks(x + (len(locations) - 1) * bar_width / 2)
-    ax.set_xticklabels(weekday_order)
-    plt.xticks(rotation=45)
     ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
+    plt.xticks(rotation=45)
+    st.pyplot(fig)
+
+    # Plot percentage used shifts per provider
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.bar(shifts_summary['Preceptor'], shifts_summary['Percentage Used Shifts'])
+    ax.set_xlabel('Preceptor')
+    ax.set_ylabel('Percentage of Used Shifts')
+    ax.set_title('Percentage of Used Shifts Per Provider')
+    plt.xticks(rotation=45, ha='right', fontsize=10)
+    st.pyplot(fig)
+
+    # Plot percentage MD students per provider
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.bar(shifts_summary['Preceptor'], shifts_summary['Percentage MD Students'])
+    ax.set_xlabel('Preceptor')
+    ax.set_ylabel('Percentage of MD Students')
+    ax.set_title('Percentage of MD Students Per Provider')
+    plt.xticks(rotation=45, ha='right', fontsize=10)
     st.pyplot(fig)
 
     # Include all data in the downloadable Excel file
@@ -289,13 +232,15 @@ if uploaded_files:
     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Combined Dataset')  # Full dataset
         preceptor_days_summary.to_excel(writer, index=False, sheet_name='Total Days Worked')  # Total days worked
-        shifts_summary.to_excel(writer, index=False, sheet_name='Shifts Summary')  # Available vs. used shifts
+        shifts_summary.to_excel(writer, index=False, sheet_name='Shifts Summary')  # Shifts summary with percentages
+        weekday_shifts.to_excel(writer, index=False, sheet_name='Weekday Shifts Summary')  # Open shifts by weekday
+        location_shifts.to_excel(writer, index=False, sheet_name='Location Shifts Summary')  # Open shifts by location
     output_file.seek(0)
 
     st.download_button(
         label="Download Combined and Summary Data",
         data=output_file,
-        file_name="combined_and_preceptor_data.xlsx",
+        file_name="combined_and_summary_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
