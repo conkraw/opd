@@ -90,6 +90,27 @@ if uploaded_files:
 
     # Calculate Days Worked by Preceptor
     filtered_df = df[df['Student Placed'] == 'Yes']
+
+    # Filter for specific locations: HOPE_DRIVE, ETOWN, NYES
+    filtered_locations = filtered_df[filtered_df['Location'].isin(['HOPE_DRIVE', 'ETOWN', 'NYES'])]
+    
+    # Count shifts assigned per student
+    shifts_per_student = filtered_locations.groupby('Student').size().reset_index(name='Assigned Shifts')
+    
+    # Merge student type (MD/PA) for categorization
+    shifts_per_student = pd.merge(shifts_per_student, filtered_locations[['Student', 'Student Type']].drop_duplicates(), on='Student', how='left')
+    
+    # Calculate averages
+    average_shifts_total = shifts_per_student['Assigned Shifts'].mean()
+    average_shifts_md = shifts_per_student[shifts_per_student['Student Type'] == 'MD']['Assigned Shifts'].mean()
+    average_shifts_pa = shifts_per_student[shifts_per_student['Student Type'] == 'PA']['Assigned Shifts'].mean()
+    
+    # Display results in Streamlit
+    st.write("Average Outpatient Shifts Assigned Per Individual Student (HOPE_DRIVE, ETOWN, NYES):")
+    st.write(f"**Total Average Shifts**: {average_shifts_total:.2f}")
+    st.write(f"**MD Average Shifts**: {average_shifts_md:.2f}")
+    st.write(f"**PA Average Shifts**: {average_shifts_pa:.2f}")
+
     filtered_df['Half Day'] = filtered_df['Type'].apply(lambda x: 0.5 if x in ['AM', 'PM'] else 0)
     days_worked = (
         filtered_df.groupby(['Preceptor', 'Date'])['Half Day']
