@@ -54,8 +54,16 @@ if uploaded_files:
 
     df = pd.DataFrame(all_data)
 
+    # Clean Preceptor names: remove leading/trailing spaces and normalize values
+    df['Preceptor'] = df['Preceptor'].str.strip()  # Remove leading/trailing spaces
+    df['Preceptor'] = df['Preceptor'].str.replace(r' ~$', '', regex=True)  # Remove trailing ~
+
     # Filter rows where 'Student Placed' is 'Yes'
     filtered_df = df[df['Student Placed'] == 'Yes']
+
+    # Clean Preceptor names in filtered_df as well
+    filtered_df['Preceptor'] = filtered_df['Preceptor'].str.strip()
+    filtered_df['Preceptor'] = filtered_df['Preceptor'].str.replace(r' ~$', '', regex=True)
 
     # Calculate Days Worked by Preceptor
     filtered_df['Half Day'] = filtered_df['Type'].apply(lambda x: 0.5 if x in ['AM', 'PM'] else 0)
