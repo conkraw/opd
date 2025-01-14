@@ -55,7 +55,7 @@ if uploaded_files:
     df = pd.DataFrame(all_data)
 
     # Exclude rows with "COM CLOSED" or "Closed" in the Description column
-    df = df[~df['Description'].str.contains('COM CLOSED|Closed|MHS ORIENTATION', case=False, na=False)]
+    df = df[~df['Description'].str.contains('COM CLOSED|Closed', case=False, na=False)]
 
     # Filter rows where 'Student Placed' is 'Yes'
     filtered_df = df[df['Student Placed'] == 'Yes']
@@ -110,6 +110,9 @@ if uploaded_files:
     shifts_summary = pd.merge(available_shifts, used_shifts, on='Preceptor', how='left')
     shifts_summary['Used Shifts'] = shifts_summary['Used Shifts'].fillna(0)
     shifts_summary['Unused Shifts'] = shifts_summary['Available Shifts'] - shifts_summary['Used Shifts']
+    shifts_summary['Percentage of Shifts Filled'] = (
+        (shifts_summary['Used Shifts'] / shifts_summary['Available Shifts']) * 100
+    )
 
     # Display the combined dataset (all rows)
     st.write("Combined Dataset (All Rows):")
@@ -124,26 +127,33 @@ if uploaded_files:
     st.write(shifts_summary)
 
     # Plot the graph for total days worked
-    fig, ax = plt.subplots(figsize=(10, 6))  # Increase figure size
+    fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(preceptor_days_summary['Preceptor'], preceptor_days_summary['Total Days'])
     ax.set_xlabel('Preceptor')
     ax.set_ylabel('Total Days Worked')
     ax.set_title('Total Days Worked by Preceptor')
-    plt.xticks(rotation=45, fontsize=10, ha='right')  # Rotate and adjust font size
+    plt.xticks(rotation=45, fontsize=10, ha='right')
     st.pyplot(fig)
 
-
     # Plot the graph for available vs. used shifts
-    fig, ax = plt.subplots(figsize=(12, 6))  # Increase figure size
+    fig, ax = plt.subplots(figsize=(12, 6))
     ax.bar(shifts_summary['Preceptor'], shifts_summary['Available Shifts'], label='Available Shifts', alpha=0.7)
     ax.bar(shifts_summary['Preceptor'], shifts_summary['Used Shifts'], label='Used Shifts', alpha=0.7)
     ax.set_xlabel('Preceptor')
     ax.set_ylabel('Shifts')
     ax.set_title('Available vs. Used Shifts by Preceptor')
     ax.legend()
-    plt.xticks(rotation=45, fontsize=10, ha='right')  # Rotate and adjust font size
+    plt.xticks(rotation=45, fontsize=10, ha='right')
     st.pyplot(fig)
 
+    # Plot the graph for percentage of shifts filled
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(shifts_summary['Preceptor'], shifts_summary['Percentage of Shifts Filled'])
+    ax.set_xlabel('Preceptor')
+    ax.set_ylabel('Percentage of Shifts Filled')
+    ax.set_title('Percentage of Shifts Where Preceptor is Assigned a Student')
+    plt.xticks(rotation=45, fontsize=10, ha='right')
+    st.pyplot(fig)
 
     # Include shifts summary in the download file
     output_file = BytesIO()
@@ -160,4 +170,3 @@ if uploaded_files:
         file_name="combined_and_summary_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
