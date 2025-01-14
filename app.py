@@ -66,29 +66,16 @@ def correct_student_designations(df):
     return df
 
 # Identify data entry errors for review
-def identify_data_entry_errors(df):
+def flag_missing_designations(df):
     """
-    Identifies potential data entry errors where the same student appears with inconsistent designations.
+    Flags rows where a preceptor was assigned a student but the student is missing (MD) or (PA) designation.
     """
-    # Extract the base student name (remove designations like (MD) or (PA))
-    df['Base Student Name'] = df['Student'].str.replace(r'\s*\(.*?\)', '', regex=True).str.strip()
-
-    # Check for inconsistencies
-    inconsistent_students = (
-        df.groupby('Base Student Name')['Student']
-        .nunique()
-        .reset_index()
-        .rename(columns={'Student': 'Designation Variants'})
+    # Create a flag column
+    df['Missing Designation'] = df.apply(
+        lambda row: row['Student Placed'] == 'Yes' and not pd.notnull(row['Student']) or
+        (row['Student Placed'] == 'Yes' and not bool(pd.Series(row['Student']).str.contains(r'\((MD|PA)\)').any())), axis=1
     )
-    inconsistent_students = inconsistent_students[inconsistent_students['Designation Variants'] > 1]
-
-    # Filter rows with potential errors for review
-    errors_for_review = df[df['Base Student Name'].isin(inconsistent_students['Base Student Name'])]
-
-    # Drop the temporary column
-    df.drop(columns=['Base Student Name'], inplace=True)
-
-    return errors_for_review
+    return df
 
 
 # Streamlit app
@@ -115,16 +102,17 @@ if uploaded_files:
 
     # Correct missing student designations
     df = correct_student_designations(df)
+
+    # Flag rows with missing designations
+    df = flag_missing_designations(df)
     
-    # Identify potential data entry errors
-    errors_for_review = identify_data_entry_errors(df)
-    
-    # Display the errors for review
-    if not errors_for_review.empty:
-        st.write("Potential Data Entry Errors for Review:")
-        st.write(errors_for_review)
+    # Display flagged rows for review
+    missing_designations = df[df['Missing Designation']]
+    if not missing_designations.empty:
+        st.write("Rows with Missing Designations for Students:")
+        st.write(missing_designations)
     else:
-        st.write("No data entry errors found!")
+        st.write("No missing designations found!")
 
     # Add weekday column
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
