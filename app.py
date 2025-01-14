@@ -115,6 +115,37 @@ if uploaded_files:
     plt.xticks(rotation=45, fontsize=10, ha='right')
     st.pyplot(fig)
 
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    df['Weekday'] = df['Date'].dt.day_name()
+
+    # Sort weekdays (Monday to Sunday)
+    weekday_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    df['Weekday'] = pd.Categorical(df['Weekday'], categories=weekday_order, ordered=True)
+
+    # Calculate available and used shifts
+    total_shifts = df.groupby(['Location', 'Weekday', 'Type']).size().reset_index(name='Total Shifts')
+    open_shifts = df[df['Student Placed'] == 'No'].groupby(['Location', 'Weekday', 'Type']).size().reset_index(name='Open Shifts')
+
+    # Merge total shifts and open shifts
+    location_shifts = pd.merge(total_shifts, open_shifts, on=['Location', 'Weekday', 'Type'], how='left')
+    location_shifts['Open Shifts'] = location_shifts['Open Shifts'].fillna(0)
+
+    # Calculate percentage open shifts by location
+    location_shifts['Percentage Open'] = (location_shifts['Open Shifts'] / location_shifts['Total Shifts']) * 100
+
+    # Total percentage (all locations combined)
+    total_shifts_summary = location_shifts.groupby(['Weekday', 'Type'])[['Total Shifts', 'Open Shifts']].sum().reset_index()
+    total_shifts_summary['Percentage Open'] = (total_shifts_summary['Open Shifts'] / total_shifts_summary['Total Shifts']) * 100
+
+    # Individual Preceptor Percentage
+    preceptor_summary = df[df['Student Placed'] == 'Yes'].groupby(['Preceptor', 'Type'])['Student Placed'].count()
+    preceptor_summary = preceptor_summary.div(
+        df.groupby(['Preceptor', 'Type'])['Student Placed'].size()
+    ).reset_index(name='Percentage Filled') * 100
+
+    # Reshape data for display
+    total_shifts_summary_pivot = total_shifts_summary.pivot(index='Weekday', columns='Type', values='Percentage Open').fillna(0).reset_index()
+
     # Plot the graph for available vs. used shifts
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.bar(shifts_summary['Preceptor'], shifts_summary['Available Shifts'], label='Available Shifts', alpha=0.7)
