@@ -132,22 +132,31 @@ if uploaded_files:
         (shifts_summary['PA Shifts'] / shifts_summary['Used Shifts']) * 100
     ).fillna(0)
 
-    # Calculate average open shifts by weekday and type (AM/PM)
-    open_shifts = df[df['Student Placed'] == 'No']
-    avg_open_shifts = (
-        open_shifts.groupby(['Weekday', 'Type'])
+    # Calculate total and percentage open shifts by weekday and type (AM/PM)
+    total_shifts = (
+        df.groupby(['Weekday', 'Type'])
         .size()
-        .reset_index(name='Open Shifts')
-        .groupby(['Weekday', 'Type'])['Open Shifts']
-        .mean()
-        .unstack()
-        .fillna(0)
-        .reset_index()
+        .reset_index(name='Total Shifts')
     )
 
-    # Display the average open shifts table
-    st.write("Average Open Shifts by Weekday and Type:")
-    st.write(avg_open_shifts)
+    open_shifts = (
+        df[df['Student Placed'] == 'No']
+        .groupby(['Weekday', 'Type'])
+        .size()
+        .reset_index(name='Open Shifts')
+    )
+
+    # Merge total shifts and open shifts
+    weekday_shifts = pd.merge(total_shifts, open_shifts, on=['Weekday', 'Type'], how='left')
+    weekday_shifts['Open Shifts'] = weekday_shifts['Open Shifts'].fillna(0)
+    weekday_shifts['Percentage Open'] = (weekday_shifts['Open Shifts'] / weekday_shifts['Total Shifts']) * 100
+
+    # Reshape data for better display
+    weekday_shifts_summary = weekday_shifts.pivot(index='Weekday', columns='Type', values='Percentage Open').fillna(0).reset_index()
+
+    # Display the percentage open shifts table
+    st.write("Percentage of Open Shifts by Weekday and Type (AM/PM):")
+    st.write(weekday_shifts_summary)
 
     # Display the shifts summary table
     st.write("Summary Table (Available vs. Used Shifts by Preceptor):")
@@ -157,7 +166,7 @@ if uploaded_files:
     output_file = BytesIO()
     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Combined Dataset')  # Full dataset
-        avg_open_shifts.to_excel(writer, index=False, sheet_name='Avg Open Shifts')  # Avg open shifts
+        weekday_shifts_summary.to_excel(writer, index=False, sheet_name='Percentage Open Shifts')  # Percentage open shifts
         shifts_summary.to_excel(writer, index=False, sheet_name='Shifts Summary')  # Shifts summary
     output_file.seek(0)
 
@@ -167,3 +176,4 @@ if uploaded_files:
         file_name="combined_and_summary_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
