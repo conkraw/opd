@@ -167,4 +167,3 @@ if uploaded_files:
         file_name="combined_and_summary_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
