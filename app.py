@@ -55,7 +55,7 @@ if uploaded_files:
     df = pd.DataFrame(all_data)
 
     # Exclude rows with "COM CLOSED" or "Closed" in the Description column
-    df = df[~df['Description'].str.contains('COM CLOSED|Closed', case=False, na=False)]
+    df = df[~df['Description'].str.contains('COM CLOSED|Closed|MHS ORIENTATION', case=False, na=False)]
 
     # Filter rows where 'Student Placed' is 'Yes'
     filtered_df = df[df['Student Placed'] == 'Yes']
