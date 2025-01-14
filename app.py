@@ -122,24 +122,26 @@ if uploaded_files:
     st.write(shifts_summary)
 
     # Plot the graph for total days worked
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 6))  # Increase figure size
     ax.bar(preceptor_days_summary['Preceptor'], preceptor_days_summary['Total Days'])
     ax.set_xlabel('Preceptor')
     ax.set_ylabel('Total Days Worked')
     ax.set_title('Total Days Worked by Preceptor')
-    plt.xticks(rotation=45)
+    plt.xticks(rotation=45, fontsize=10, ha='right')  # Rotate and adjust font size
     st.pyplot(fig)
 
+
     # Plot the graph for available vs. used shifts
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(12, 6))  # Increase figure size
     ax.bar(shifts_summary['Preceptor'], shifts_summary['Available Shifts'], label='Available Shifts', alpha=0.7)
     ax.bar(shifts_summary['Preceptor'], shifts_summary['Used Shifts'], label='Used Shifts', alpha=0.7)
     ax.set_xlabel('Preceptor')
     ax.set_ylabel('Shifts')
     ax.set_title('Available vs. Used Shifts by Preceptor')
     ax.legend()
-    plt.xticks(rotation=45)
+    plt.xticks(rotation=45, fontsize=10, ha='right')  # Rotate and adjust font size
     st.pyplot(fig)
+
 
     # Include shifts summary in the download file
     output_file = BytesIO()
