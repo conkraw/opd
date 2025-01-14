@@ -39,25 +39,46 @@ def process_area(sheet, date_column, date_row, start_row, location):
 def correct_and_flag_missing_designations(df):
     """
     Corrects missing (MD) or (PA) designations in the dataset and flags rows where corrections were made.
+    Also ensures that the Student Type column is updated after correction.
     """
+    # Extract the designation (MD or PA) if present
     df['Student Designation'] = df['Student'].str.extract(r'\((MD|PA)\)')
+    
+    # Extract the base student name (without the designation)
     df['Base Student Name'] = df['Student'].str.replace(r'\s*\(.*?\)', '', regex=True).str.strip()
+
+    # Get students with valid designations
     students_with_designations = df.dropna(subset=['Student Designation'])
+
+    # Add a column for correction notes
     df['Correction Note'] = None
 
+    # Correct rows where the designation is missing
     for idx, row in df.iterrows():
         if row['Student Placed'] == 'Yes' and pd.isna(row['Student Designation']) and row['Base Student Name']:
+            # Find matching students with valid designations
             matches = students_with_designations[
                 students_with_designations['Base Student Name'] == row['Base Student Name']
             ]
             if not matches.empty:
+                # Take the first matching designation
                 correct_designation = matches['Student Designation'].iloc[0]
                 corrected_student = f"{row['Base Student Name']} ({correct_designation})"
+                
+                # Update the Student column with the corrected designation
                 df.at[idx, 'Student'] = corrected_student
+                
+                # Update the Student Type column
+                df.at[idx, 'Student Type'] = correct_designation
+                
+                # Add a note indicating the correction
                 df.at[idx, 'Correction Note'] = f"Corrected to '{corrected_student}'"
 
+    # Drop temporary columns used for corrections
     df.drop(columns=['Student Designation', 'Base Student Name'], inplace=True)
+
     return df
+
 
 st.title('OPD Data Processor')
 
